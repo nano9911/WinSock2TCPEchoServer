@@ -269,14 +269,16 @@ DWORD WINAPI ClinetHandler(LPVOID Param) {
 		}
 
 		else if (iReceiveResult == 0) {
-			printf("\n$ Emprty message received.\nClosing connection...\n\n");
+			printf("\n$ Empty message received.\n$ Closing connection...\n\n");
 			break;
 		}
 
 		else	{
 			printf("$ recv() failed: %d\nConnection", WSAGetLastError());
-			if (iResult == 0)
+			if (iResult == 0) {
 				printf(" with %s:%s ", ipstr, portstr);
+			}
+
 			printf(" is closing...\n\n");
 			cExitCode = 1;
 			break;
@@ -284,15 +286,24 @@ DWORD WINAPI ClinetHandler(LPVOID Param) {
 		break;
 	} while (TRUE);
 
-	/* start the procedure of closing the connection with client by shuting down both sending and recieving,
-	then close the socket safely, and exit the thread with last value of exit code. */
-	iResult = shutdown(ClientSocket, SD_BOTH);
+	/* Start the procedure of closing the connection with client by shuting down the sending side,
+	*  then waits in an recv loop until zero bytes returned over the connection.
+	*  Then close the socket safely, and exit the thread with last value of exit code. */
+	iResult = shutdown(ClientSocket, SD_SEND);
 	if (iResult == SOCKET_ERROR) {
 		printf("$ shutdown() failed: %ld\nClosing connection...\n", WSAGetLastError());
 		cExitCode = 1;
 	}
 
+	printf("[+] shudown(): connection with client %s:%s shuteddown on SD_SEND\n", ipstr, portstr);
+	printf("> starting the recv loop to close the connection safely...\n");
+	while (iReceiveResult > 0) {
+		iReceiveResult = recv(ClientSocket, sRecvBuf, iRecvBufLen, 0);
+	}
+
 	closesocket(ClientSocket);
+	printf("[+] closesocket(): ended the recvloop and closed the client %s:%s socket safely\n", ipstr, portstr);
+	printf("[+] ExitThread(): exiting the client %s:%s thread...\n\n", ipstr, portstr);
 	/* In our case the exit code doesn't matter, because the main htread isn't waiting it or used any AsynchIO
 	to handle the joining of Client Handlers. */
 	ExitThread(cExitCode);
