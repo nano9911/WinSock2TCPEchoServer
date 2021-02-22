@@ -24,12 +24,13 @@ DWORD WINAPI ClinetHandler(LPVOID Param);
 int __cdecl main(void)
 {
 	WSADATA wsadata;
-	/* Server Listen Socket to accepts connections and
+	/* Server uses Listen Socket to accepts connections and
 	create Clients Sockets */
 	SOCKET ListenSocket = INVALID_SOCKET,
 		ClientSocket = INVALID_SOCKET;
+	/* Normal BSD sockets arguments, res / hints (ptr is defined in
+	CreateSocket function) */
 	struct addrinfo* result = NULL,
-		* ptr = NULL,
 		hints;
 
 	/* Store source address of connection accepted by accept() */
@@ -63,7 +64,7 @@ int __cdecl main(void)
 
 	/*
 	*	getaddrinfo() return a linked list of addrinfo structs
-	*	which we will test to create out socket and bind it to 
+	*	which we will test to create our socket and bind it to 
 	*	the required port.
 	*/
 	iResult = getaddrinfo(0, DEFAULT_PORT, &hints, &result);
@@ -155,11 +156,18 @@ SOCKET CreateSocket(struct addrinfo* result) {
 		ListenSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
 		if (ListenSocket == INVALID_SOCKET) {
 			printf("$ socket() failed: %ld\n", WSAGetLastError());
+			/* failure in socket() is not critical and we can test the next one */
 			continue;
 		}
 
 		/* Set SO_REUSEADDR option to the created socket, to use the chosen port safely */
+		/*
+		*  Fro better security use the SO_EXCLUSIVEADDRUSE option, which requires admin
+		*  previliges on windows.
+		*  setsockopt(ListenSocket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, &yes, sizeof(char))
+		*/
 		if (setsockopt(ListenSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(char)) == -1) {
+			/* failure in setsockopt() is critical and it's worthless to test others */
 			printf("$ setsockopt() failed: %ld\nClosing connection...\n", WSAGetLastError());
 			closesocket(ListenSocket);
 			WSACleanup();
@@ -169,6 +177,7 @@ SOCKET CreateSocket(struct addrinfo* result) {
 		/* Binding the created socket to the port we entered to getaddrinfo() */
 		iResult = bind(ListenSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
 		if (iResult == SOCKET_ERROR) {
+			/* failure in bind() is not critical and we can test the next one */
 			printf("$ bind() failed: %d\n", WSAGetLastError());
 			continue;
 		}
